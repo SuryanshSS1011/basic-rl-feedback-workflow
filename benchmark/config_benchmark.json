@@ -1,0 +1,81 @@
+{
+  "models": {
+    "starcoder2": "bigcode/starcoder2-7b",
+    "deepseek": "deepseek-ai/deepseek-coder-6.7b-base",
+    "codellama": "codellama/CodeLlama-7b-hf",
+    "wizardcoder": "WizardLM/WizardCoder-15B-V1.0"
+  },
+  "models_for_testing": {
+    "deepseek-small": "deepseek-ai/deepseek-coder-1.3b-instruct"
+  },
+  "datasets": {
+    "xlcost": {
+      "enabled": true,
+      "limit": null,
+      "language_filter": ["C", "C++"],
+      "description": "C/C++ program-level code generation"
+    },
+    "apps_plus": {
+      "enabled": true,
+      "limit": null,
+      "language": "python",
+      "description": "Python programming problems with test cases"
+    },
+    "question_prompts": {
+      "enabled": false,
+      "limit": null,
+      "file_path": null,
+      "description": "Custom prompts from Google Docs export"
+    }
+  },
+  "generation": {
+    "max_tokens": 512,
+    "temperature": 0.7,
+    "top_k": 50,
+    "top_p": 0.95
+  },
+  "analysis": {
+    "compilation_timeout": 30,
+    "test_execution": {
+      "enabled": true,
+      "timeout_per_test": 5,
+      "max_tests_per_sample": 10,
+      "description": "Test case execution for semantic error detection"
+    },
+    "security": {
+      "codeql_timeout": 180,
+      "bandit_enabled": true,
+      "description": "CodeQL for C/C++, Bandit for Python"
+    }
+  },
+  "checkpointing": {
+    "enabled": true,
+    "interval": 10,
+    "description": "Save checkpoint every N prompts for resumability"
+  },
+  "test_mode": {
+    "enabled": false,
+    "prompts_per_dataset": 5,
+    "models": ["deepseek-small"],
+    "description": "Quick validation mode with small model and limited prompts"
+  },
+  "cloud": {
+    "cache_dir": "/opt/hf_cache",
+    "results_sync": null,
+    "description": "Cloud-specific settings (S3/GCS sync optional)"
+  },
+  "local": {
+    "cache_dir": "/scratch/{username}/hf_cache",
+    "results_dir": "./benchmark/results"
+  },
+  "metrics": {
+    "semantic_error_definition": {
+      "wrong_output": "Test case mismatch (actual != expected)",
+      "timeout": "Exceeded time limit (infinite loop)",
+      "crash": "Runtime error/segfault/exception",
+      "memory_error": "Out of memory/stack overflow",
+      "no_output": "Program exits without producing output"
+    },
+    "description": "All semantic error types count as 'failed to solve task'"
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "aws": {
+    "recommended_instances": {
+      "budget": {
+        "type": "g4dn.xlarge",
+        "gpu": "T4 16GB",
+        "vcpu": 4,
+        "memory_gb": 16,
+        "hourly_cost_usd": 0.526,
+        "notes": "Good for testing and smaller models"
+      },
+      "standard": {
+        "type": "p3.2xlarge",
+        "gpu": "V100 16GB",
+        "vcpu": 8,
+        "memory_gb": 61,
+        "hourly_cost_usd": 3.06,
+        "notes": "Best for 7B models"
+      },
+      "high_performance": {
+        "type": "p4d.24xlarge",
+        "gpu": "8x A100 40GB",
+        "vcpu": 96,
+        "memory_gb": 1152,
+        "hourly_cost_usd": 32.77,
+        "notes": "For parallel multi-model runs or 15B+ models"
+      }
+    },
+    "ami": {
+      "deep_learning": "ami-0b7ac1da7f0c41cf0",
+      "region": "us-east-1",
+      "notes": "AWS Deep Learning AMI with PyTorch pre-installed"
+    },
+    "storage": {
+      "root_volume_gb": 200,
+      "volume_type": "gp3",
+      "notes": "200GB recommended for model caching"
+    }
+  },
+  "gcp": {
+    "recommended_instances": {
+      "budget": {
+        "machine_type": "n1-standard-8",
+        "gpu": "nvidia-tesla-t4",
+        "gpu_count": 1,
+        "hourly_cost_usd": 0.95,
+        "notes": "Cost-effective for smaller models"
+      },
+      "standard": {
+        "machine_type": "n1-standard-16",
+        "gpu": "nvidia-tesla-v100",
+        "gpu_count": 1,
+        "hourly_cost_usd": 2.95,
+        "notes": "Good for 7B models"
+      },
+      "high_performance": {
+        "machine_type": "a2-highgpu-1g",
+        "gpu": "nvidia-tesla-a100",
+        "gpu_count": 1,
+        "hourly_cost_usd": 3.67,
+        "notes": "Best performance for 15B+ models"
+      }
+    },
+    "image": {
+      "family": "pytorch-latest-gpu",
+      "project": "deeplearning-platform-release",
+      "notes": "GCP Deep Learning VM with PyTorch"
+    },
+    "storage": {
+      "boot_disk_gb": 200,
+      "boot_disk_type": "pd-ssd",
+      "notes": "SSD recommended for model loading speed"
+    }
+  },
+  "benchmark_estimates": {
+    "notes": "Approximate times based on average prompt complexity",
+    "per_model": {
+      "model_load_time_seconds": 120,
+      "generation_time_per_prompt_seconds": 5,
+      "analysis_time_per_prompt_seconds": 10
+    },
+    "full_benchmark": {
+      "prompts_count": 500,
+      "models_count": 4,
+      "estimated_hours": 8,
+      "estimated_cost_p3_2xlarge": 24.48
+    }
+  }
+}

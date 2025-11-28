@@ -1,0 +1,37 @@
+{
+  "models": ["deepseek-small"],
+  "datasets": {
+    "xlcost": {
+      "enabled": false
+    },
+    "apps_plus": {
+      "enabled": true,
+      "limit": 3
+    },
+    "question_prompts": {
+      "enabled": false
+    }
+  },
+  "generation": {
+    "max_tokens": 256,
+    "temperature": 0.7,
+    "top_k": 50,
+    "top_p": 0.95
+  },
+  "analysis": {
+    "compilation_timeout": 30,
+    "test_execution": {
+      "enabled": true,
+      "timeout_per_test": 5,
+      "max_tests_per_sample": 3
+    },
+    "security": {
+      "codeql_timeout": 180,
+      "bandit_enabled": true
+    }
+  },
+  "checkpointing": {
+    "enabled": true,
+    "interval": 5
+  }
+}

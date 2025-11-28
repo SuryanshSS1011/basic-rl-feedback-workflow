@@ -124,6 +124,7 @@ ENV/
 env.bak/
 venv.bak/
 klee-venv/
+benchmark_venv/
 
 # =============================================================================
 # Model and Cache Files
@@ -132,6 +133,7 @@ klee-venv/
 # HuggingFace cache and models
 .cache/
 .huggingface/
+.hf_cache/
 models/
 *.gguf
 *.ggml
@@ -250,6 +252,10 @@ codeql_db/
 # =============================================================================
 # Specific Tool Outputs
 # =============================================================================
+
+# Benchmark results
+benchmark/results/
+benchmark/dataset_cache/
 
 # KLEE specific
 *.ktest

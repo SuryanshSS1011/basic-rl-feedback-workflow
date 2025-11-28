@@ -263,15 +263,6 @@ DeepSeek LLM → C Calculator Code → CodeQL Analysis → 17 Security Issues Fo
 
 All components work together seamlessly to provide actionable security feedback for LLM-generated code.
 
-## 📄 License
-
-[Your License Here]
-
-## 🤝 Contributing
-
-[Contribution Guidelines Here]
-Example RL feedback chain for training LLM. Incorporates feedback from compiler, KLEE, and CodeQL in form of text files accessible by the training program.
-
 ## Quick Start
 
 1. **Setup Environment**:
