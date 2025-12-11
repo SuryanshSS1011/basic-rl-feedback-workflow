@@ -253,9 +253,18 @@ codeql_db/
 # Specific Tool Outputs
 # =============================================================================
 
-# Benchmark results
+# Benchmark results (large generated data - 286MB+)
 benchmark/results/
 benchmark/dataset_cache/
+benchmark/full_results/
+benchmark/validation_cache/
+benchmark/validation_results/
+
+# Training checkpoints (large model files)
+checkpoints/
+
+# Temporary output
+output.txt
 
 # KLEE specific
 *.ktest
