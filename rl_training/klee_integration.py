@@ -11,6 +11,10 @@ KLEE explores all possible execution paths to find:
 
 Note: KLEE is computationally expensive, so it's primarily used for
 offline evaluation rather than online RL training.
+
+IMPORTANT: KLEE only works on C/C++ code. For Python code analysis,
+use the scoring_agent.py with language="python" which uses AST parsing
+and regex-based security checks instead.
 """
 
 import os
@@ -161,6 +165,7 @@ class KLEERunner:
         code: str,
         entry_function: str = "main",
         symbolic_args: Optional[List[str]] = None,
+        language: str = "c",
     ) -> KLEEResult:
         """
         Analyze C code with KLEE.
@@ -169,12 +174,24 @@ class KLEERunner:
             code: C source code
             entry_function: Entry function for analysis
             symbolic_args: Arguments to make symbolic
+            language: Code language ("c" or "python"). Python returns empty result.
 
         Returns:
             KLEEResult with found bugs
         """
         import time
         start_time = time.time()
+
+        # KLEE only works on C/C++ code
+        if language.lower() == "python":
+            return KLEEResult(
+                success=True,
+                bugs=[],
+                paths_explored=0,
+                instructions_executed=0,
+                execution_time=0.0,
+                error_message="KLEE not applicable for Python code",
+            )
 
         # Create work directory
         work_dir = self.temp_dir / f"klee_{os.getpid()}"
@@ -437,36 +454,47 @@ class KLEERunner:
 def analyze_with_klee(
     code: str,
     timeout: int = 60,
+    language: str = "c",
 ) -> Tuple[List[Dict], bool]:
     """
     Convenience function to analyze code with KLEE.
 
     Args:
-        code: C source code
+        code: C source code (Python returns empty result)
         timeout: Timeout in seconds
+        language: Code language ("c" or "python")
 
     Returns:
         Tuple of (list of bug dicts, success bool)
     """
+    # KLEE only works on C/C++
+    if language.lower() == "python":
+        return [], True
+
     runner = KLEERunner(timeout=timeout)
 
     if not runner.is_available():
         return [], False
 
-    result = runner.analyze(code)
+    result = runner.analyze(code, language=language)
 
     return [b.to_dict() for b in result.bugs], result.success
 
 
-def quick_klee_check(code: str) -> int:
+def quick_klee_check(code: str, language: str = "c") -> int:
     """
     Quick KLEE check returning number of bugs found.
 
     Args:
-        code: C source code
+        code: C source code (Python returns 0)
+        language: Code language ("c" or "python")
 
     Returns:
-        Number of bugs found (0 if KLEE unavailable or failed)
+        Number of bugs found (0 if KLEE unavailable, failed, or Python)
     """
-    bugs, success = analyze_with_klee(code, timeout=30)
+    # KLEE only works on C/C++
+    if language.lower() == "python":
+        return 0
+
+    bugs, success = analyze_with_klee(code, timeout=30, language=language)
     return len(bugs) if success else 0

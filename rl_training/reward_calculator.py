@@ -5,8 +5,14 @@ Computes the combined reward: R(y) = α · Rfunc(y) + β · Rsec(y)
 
 Where:
 - Rfunc = passed_tests / total_tests (continuous [0, 1])
+  - For Python: syntax validity check (0 if invalid, 1 if valid)
+  - For C/C++: compilation check (0 if fails, then test pass rate)
 - Rsec = exp(-V) or 1 - min(V, 1)
-- V = normalized severity score from CodeQL + KLEE findings
+- V = normalized severity score from security findings
+  - For Python: Regex-based security pattern detection
+  - For C/C++: CodeQL + KLEE findings
+
+Supports both Python and C/C++ code analysis.
 """
 
 import math
@@ -81,8 +87,19 @@ class RewardCalculator:
 
     R(y) = α · Rfunc(y) + β · Rsec(y)
 
-    Usage:
+    Supports both Python and C/C++ code analysis.
+
+    Usage (Python):
         calculator = RewardCalculator(config)
+        result = calculator.compute_reward(
+            compiles=True,  # syntax_valid for Python
+            tests_passed=1,
+            tests_total=1,
+            codeql_findings=[{'rule_id': 'python/code-injection'}],
+        )
+        print(f"Reward: {result.reward}")
+
+    Usage (C/C++):
         result = calculator.compute_reward(
             compiles=True,
             tests_passed=8,
@@ -90,7 +107,6 @@ class RewardCalculator:
             codeql_findings=[{'rule_id': 'cpp/null-dereference'}],
             klee_bugs=[{'type': 'ptr'}]
         )
-        print(f"Reward: {result.reward}")
     """
 
     def __init__(

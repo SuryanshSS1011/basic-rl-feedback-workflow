@@ -263,6 +263,12 @@ benchmark/validation_results/
 # Training checkpoints (large model files)
 checkpoints/
 
+# Legacy/archived files (old C pipeline)
+legacy/
+
+# Reports (paper drafts, generated during work)
+reports/
+
 # Temporary output
 output.txt
 

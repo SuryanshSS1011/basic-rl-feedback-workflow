@@ -300,3 +300,165 @@ For detailed setup instructions, see [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.
 - **CUDA Support**: GPU-accelerated PyTorch and llama-cpp-python
 - **Modern Libraries**: Updated transformers library (4.57.0+)
 - **Automated Setup**: Single script handles all dependencies
+
+---
+
+# 🤖 SecureCodeRL: RL Training for Secure Code Generation
+
+This project also includes a **reinforcement learning pipeline** for training LLMs to generate both functional AND secure Python code.
+
+## Overview
+
+SecureCodeRL uses a combined reward signal:
+
+```
+R(y) = α · Rfunc + β · Rsec
+```
+
+Where:
+- **Rfunc** = Functional correctness (syntax validity, test pass rate)
+- **Rsec** = Security score (absence of dangerous patterns)
+- **α = 0.6**, **β = 0.4** (default weights)
+
+## Training Pipeline
+
+### Phase 1: Supervised Fine-Tuning (SFT)
+
+```bash
+python train_sft_stdin.py
+```
+
+Trains DeepSeek-Coder-1.3B with LoRA on APPS+ dataset (stdin-style problems).
+
+**Configuration:**
+- Model: `deepseek-ai/deepseek-coder-1.3b-instruct`
+- LoRA: r=16, alpha=32, dropout=0.1
+- Data: 3,588 training samples
+- Output: `checkpoints/sft_stdin/best`
+
+### Phase 2: PPO Training
+
+```bash
+# Basic training (fast - regex security, syntax-only Rfunc)
+python train_ppo.py \
+    --sft_checkpoint ./checkpoints/sft_stdin/best \
+    --prompts_file ./data/prompts/ppo_prompts.json \
+    --episodes 500 \
+    --batch_size 2 \
+    --learning_rate 1e-6
+
+# Enhanced training (proposal-aligned)
+python train_ppo.py \
+    --sft_checkpoint ./checkpoints/sft_stdin/best \
+    --prompts_file ./data/prompts/ppo_prompts_with_tests.json \
+    --use_bandit \
+    --use_llm_scoring \
+    --episodes 500
+```
+
+**Training Modes:**
+- **Basic (default)**: Regex security patterns, syntax-only Rfunc (fast)
+- **Enhanced (`--use_bandit`)**: Full Bandit static analysis (~0.5-1s per sample)
+- **With Tests**: Use `ppo_prompts_with_tests.json` for true Rfunc = tests_passed / total
+- **LLM Scoring (`--use_llm_scoring`)**: Context-aware security interpretation
+
+Trains with PPO using reward from:
+- Python syntax checking (AST parsing)
+- Security pattern detection (eval, exec, os.system, etc.)
+- Optional: Test execution for true functional correctness
+- Optional: Bandit comprehensive security analysis
+
+**Preparing Training Data with Test Cases:**
+```bash
+# Extract test cases from APPS+ for true Rfunc computation
+python prepare_ppo_data.py --output data/prompts/ppo_prompts_with_tests.json
+```
+
+**Training Results:**
+| Metric | Value |
+|--------|-------|
+| Best Reward | 1.0000 |
+| Final Reward | 0.7000 |
+| Best Rfunc | 1.0 |
+| Best Rsec | 1.0 |
+
+### Resume Training
+
+```bash
+python train_ppo.py \
+    --sft_checkpoint ./checkpoints/sft_stdin/best \
+    --ppo_checkpoint ./checkpoints/ppo/ppo/final \
+    --resume \
+    --episodes 1000
+```
+
+## Evaluation
+
+### Quantitative Comparison
+
+```bash
+python evaluate_models.py \
+    --sft_checkpoint checkpoints/sft_stdin/best \
+    --ppo_checkpoint checkpoints/ppo/ppo/best \
+    --num_samples 100 \
+    --output_dir results/evaluation
+```
+
+Outputs:
+- `metrics_summary.json` - Comparison metrics
+- `evaluation_report.md` - Markdown report
+- `sft_detailed.json`, `ppo_detailed.json` - Per-sample results
+
+### Qualitative Analysis
+
+```bash
+python analyze_samples.py \
+    --sft_checkpoint checkpoints/sft_stdin/best \
+    --ppo_checkpoint checkpoints/ppo/ppo/best \
+    --num_samples 20 \
+    --output_file results/sample_comparison.md
+```
+
+Generates side-by-side comparison of code samples from both models.
+
+## Project Structure (RL Components)
+
+```
+rl_training/
+├── config.py              # Training configuration
+├── ppo_trainer.py         # PPO training loop
+├── reward_calculator.py   # R = α·Rfunc + β·Rsec
+├── scoring_agent.py       # Code analysis (syntax, security)
+├── security_weights.py    # Security severity weights
+├── klee_integration.py    # KLEE for C (disabled for Python)
+└── sft_trainer.py         # SFT training
+
+train_ppo.py               # PPO training script
+train_sft_stdin.py         # SFT training script
+evaluate_models.py         # Quantitative evaluation
+analyze_samples.py         # Qualitative analysis
+
+checkpoints/
+├── sft_stdin/best/        # SFT model checkpoint
+└── ppo/ppo/best/          # PPO model checkpoint
+```
+
+## Security Patterns Detected
+
+The pipeline detects these Python security issues:
+- `eval()`, `exec()` - Code injection
+- `__import__()` - Dynamic imports
+- `subprocess.run(..., shell=True)` - Shell injection
+- `os.system()`, `os.popen()` - Command injection
+- `pickle.load()` - Unsafe deserialization
+- `yaml.load()` without SafeLoader - Unsafe YAML
+
+## Requirements for RL Training
+
+```bash
+pip install torch transformers peft datasets accelerate
+```
+
+For GPU training (recommended):
+- NVIDIA GPU with 16GB+ VRAM (V100, A100, etc.)
+- CUDA 11.8+ with cuDNN

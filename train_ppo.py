@@ -14,6 +14,13 @@ Usage:
         --prompts_file ./data/prompts.txt \
         --episodes 1000 \
         --alpha 0.6 --beta 0.4
+
+    # Resume from PPO checkpoint
+    python train_ppo.py \
+        --sft_checkpoint ./checkpoints/sft/best \
+        --ppo_checkpoint ./checkpoints/ppo/ppo/final \
+        --resume \
+        --episodes 1000
 """
 
 import argparse
@@ -40,6 +47,17 @@ def parse_args():
         type=str,
         required=True,
         help="Path to SFT checkpoint from Phase 1",
+    )
+    parser.add_argument(
+        "--ppo_checkpoint",
+        type=str,
+        default=None,
+        help="Path to PPO checkpoint to resume from (optional)",
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume training from PPO checkpoint",
     )
     parser.add_argument(
         "--output_dir",
@@ -197,6 +215,18 @@ def parse_args():
         help="Device to use (cuda/cpu)",
     )
 
+    # Proposal alignment enhancements
+    parser.add_argument(
+        "--use_bandit",
+        action="store_true",
+        help="Use Bandit for comprehensive Python security analysis (slower but more accurate)",
+    )
+    parser.add_argument(
+        "--use_llm_scoring",
+        action="store_true",
+        help="Use LLM for ambiguous security findings interpretation",
+    )
+
     return parser.parse_args()
 
 
@@ -204,18 +234,50 @@ def load_prompts(
     prompts_file: str = None,
     benchmark_dir: str = None,
     max_prompts: int = 1000,
-) -> List[str]:
-    """Load prompts from file or extract from benchmark results"""
+) -> List[dict]:
+    """
+    Load prompts from file or extract from benchmark results.
+
+    Returns list of dicts with 'prompt' and optional 'test_cases'.
+    Format v2.0 includes test cases for true Rfunc computation.
+    """
+    import json
 
     prompts = []
 
-    # Try loading from file first
+    # Try loading from JSON file first
     if prompts_file:
         prompts_path = Path(prompts_file)
         if prompts_path.exists():
             with open(prompts_path) as f:
-                prompts = [line.strip() for line in f if line.strip()]
-            print(f"Loaded {len(prompts)} prompts from {prompts_file}")
+                data = json.load(f)
+
+            # Check format version
+            if data.get('format_version') == '2.0' and 'prompts_with_tests' in data:
+                # New format with test cases
+                prompts = data['prompts_with_tests']
+                num_with_tests = sum(1 for p in prompts if p.get('test_cases', {}).get('inputs'))
+                print(f"Loaded {len(prompts)} prompts from {prompts_file} (v2.0 format)")
+                print(f"  {num_with_tests} prompts have test cases")
+            elif 'prompts' in data:
+                # Old format - convert to new structure
+                for p in data['prompts']:
+                    prompts.append({
+                        'prompt': p,
+                        'test_cases': {'inputs': [], 'outputs': []},
+                    })
+                print(f"Loaded {len(prompts)} prompts from {prompts_file} (legacy format)")
+            else:
+                # Try loading as plain text lines
+                prompts_path_txt = prompts_path.with_suffix('.txt')
+                if prompts_path_txt.exists():
+                    with open(prompts_path_txt) as f:
+                        for line in f:
+                            if line.strip():
+                                prompts.append({
+                                    'prompt': line.strip(),
+                                    'test_cases': {'inputs': [], 'outputs': []},
+                                })
 
     # Extract from benchmark results if no file
     if not prompts and benchmark_dir:
@@ -227,12 +289,21 @@ def load_prompts(
                     with open(prompt_file) as f:
                         prompt = f.read().strip()
                     if prompt:
-                        prompts.append(prompt)
+                        prompts.append({
+                            'prompt': prompt,
+                            'test_cases': {'inputs': [], 'outputs': []},
+                        })
                 except OSError:
                     pass
 
-            # Deduplicate
-            prompts = list(set(prompts))
+            # Deduplicate by prompt text
+            seen = set()
+            unique_prompts = []
+            for p in prompts:
+                if p['prompt'] not in seen:
+                    seen.add(p['prompt'])
+                    unique_prompts.append(p)
+            prompts = unique_prompts
             print(f"Extracted {len(prompts)} unique prompts from benchmark results")
 
     # Limit number of prompts
@@ -313,9 +384,23 @@ def main():
         device=args.device,
     )
 
+    # Determine checkpoint to load
+    resume_from_ppo = args.resume and args.ppo_checkpoint
+    if resume_from_ppo:
+        ppo_path = Path(args.ppo_checkpoint)
+        if not ppo_path.exists():
+            print(f"\nError: PPO checkpoint not found at {ppo_path}")
+            return 1
+        checkpoint_to_load = ppo_path
+        print(f"\nResuming from PPO checkpoint: {ppo_path}")
+    else:
+        checkpoint_to_load = sft_path
+
     # Print configuration
     print(f"\nConfiguration:")
     print(f"  SFT checkpoint: {sft_path}")
+    if resume_from_ppo:
+        print(f"  PPO checkpoint (resume): {args.ppo_checkpoint}")
     print(f"  Model: {model_config.model_path}")
     print(f"  Prompts: {len(prompts)}")
     print(f"  Episodes: {args.episodes}")
@@ -325,15 +410,35 @@ def main():
     print(f"  PPO epochs: {args.ppo_epochs}")
     print(f"  Learning rate: {args.learning_rate}")
     print(f"  Clip range: {args.clip_range}")
+    print(f"  Use Bandit: {args.use_bandit}")
+    print(f"  Use LLM Scoring: {args.use_llm_scoring}")
     print(f"  Output: {output_dir}")
 
     # Create trainer
     print("\nInitializing PPO trainer...")
-    trainer = PPOTrainer(config, prompts)
+    trainer = PPOTrainer(
+        config,
+        prompts,
+        use_bandit=args.use_bandit,
+        use_llm_for_security=args.use_llm_scoring,
+    )
 
-    # Load SFT checkpoint
-    print(f"Loading SFT checkpoint from: {sft_path}")
-    trainer.load_sft_checkpoint(sft_path)
+    # Load checkpoint (SFT or PPO for resume)
+    if resume_from_ppo:
+        print(f"Loading PPO checkpoint for resume: {checkpoint_to_load}")
+        trainer.load_sft_checkpoint(checkpoint_to_load)
+        # Load training state if exists
+        state_file = checkpoint_to_load / "trainer_state.json"
+        if state_file.exists():
+            import json
+            with open(state_file) as f:
+                state = json.load(f)
+            trainer.global_step = state.get('global_step', 0)
+            trainer.best_mean_reward = state.get('best_mean_reward', 0.0)
+            print(f"  Resumed from step {trainer.global_step}, best reward: {trainer.best_mean_reward:.4f}")
+    else:
+        print(f"Loading SFT checkpoint from: {sft_path}")
+        trainer.load_sft_checkpoint(sft_path)
 
     # Train
     print("\nStarting PPO training...")

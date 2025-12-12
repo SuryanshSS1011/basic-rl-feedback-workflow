@@ -61,14 +61,16 @@ class ScoringResult:
 class RulesEngine:
     """
     Deterministic rules for objective metrics.
-    Parses compiler output, test results, and KLEE bugs.
+    Parses syntax errors, test results, and security findings.
+
+    Supports both Python and C/C++ code analysis.
     """
 
-    # GCC error patterns
+    # GCC error patterns (for C/C++ - deprecated for Python)
     GCC_ERROR_PATTERN = re.compile(r'^(.+):(\d+):(\d+): error: (.+)$', re.MULTILINE)
     GCC_WARNING_PATTERN = re.compile(r'^(.+):(\d+):(\d+): warning: (.+)$', re.MULTILINE)
 
-    # KLEE bug patterns
+    # KLEE bug patterns (C-specific - not applicable to Python)
     KLEE_ERROR_PATTERNS = {
         'ptr': re.compile(r'(memory error|ptr|pointer)', re.IGNORECASE),
         'free': re.compile(r'(double free|invalid free|free)', re.IGNORECASE),
@@ -77,6 +79,54 @@ class RulesEngine:
         'assert': re.compile(r'(assertion|assert)', re.IGNORECASE),
         'abort': re.compile(r'(abort|aborted)', re.IGNORECASE),
     }
+
+    def parse_python_syntax(self, code: str) -> CompilationResult:
+        """
+        Check Python code syntax validity using AST parsing.
+
+        Args:
+            code: Python source code string
+
+        Returns:
+            CompilationResult with syntax validity status
+        """
+        import ast
+
+        if not code or len(code.strip()) < 5:
+            return CompilationResult(
+                compiles=False,
+                errors=["Empty or too short code"],
+                warnings=[],
+                error_count=1,
+                warning_count=0,
+            )
+
+        try:
+            ast.parse(code)
+            return CompilationResult(
+                compiles=True,
+                errors=[],
+                warnings=[],
+                error_count=0,
+                warning_count=0,
+            )
+        except SyntaxError as e:
+            error_msg = f"Line {e.lineno}: {e.msg}" if e.lineno else str(e.msg)
+            return CompilationResult(
+                compiles=False,
+                errors=[error_msg],
+                warnings=[],
+                error_count=1,
+                warning_count=0,
+            )
+        except Exception as e:
+            return CompilationResult(
+                compiles=False,
+                errors=[str(e)],
+                warnings=[],
+                error_count=1,
+                warning_count=0,
+            )
 
     def parse_gcc_output(self, output: str) -> CompilationResult:
         """
@@ -180,10 +230,10 @@ class RulesEngine:
         """
         Compute functional correctness reward using rules.
 
-        Rfunc = passed / total (or 0 if doesn't compile)
+        Rfunc = passed / total (or 0 if syntax invalid)
 
         Args:
-            compilation: Compilation result
+            compilation: Compilation/syntax result
             tests: Test result
 
         Returns:
@@ -193,10 +243,47 @@ class RulesEngine:
             return 0.0
 
         if tests.total == 0:
-            # No tests - assume correct if compiles
+            # No tests - assume correct if syntax is valid
             return 1.0
 
         return tests.passed / tests.total
+
+    def check_python_security(self, code: str) -> List[Dict]:
+        """
+        Check Python code for security issues using regex patterns.
+
+        Args:
+            code: Python source code
+
+        Returns:
+            List of security findings
+        """
+        findings = []
+
+        # Dangerous Python patterns
+        patterns = [
+            (r'\beval\s*\(', 'python/code-injection', 'Use of eval() - code injection risk', 'high'),
+            (r'\bexec\s*\(', 'python/code-injection', 'Use of exec() - code injection risk', 'high'),
+            (r'\b__import__\s*\(', 'python/dynamic-import', 'Dynamic import - potential security risk', 'medium'),
+            (r'subprocess\.(call|run|Popen)\s*\([^)]*shell\s*=\s*True',
+             'python/shell-injection', 'Shell injection risk', 'high'),
+            (r'\bos\.system\s*\(', 'python/command-injection', 'Command injection via os.system', 'high'),
+            (r'\bos\.popen\s*\(', 'python/command-injection', 'Command injection via os.popen', 'high'),
+            (r'\bpickle\.loads?\s*\(', 'python/unsafe-deserialization', 'Unsafe pickle deserialization', 'high'),
+            (r'\byaml\.load\s*\([^)]*\)', 'python/unsafe-yaml', 'Unsafe YAML load (use safe_load)', 'medium'),
+            (r'\binput\s*\(\s*\)', 'python/user-input', 'Unvalidated user input', 'low'),
+            (r'open\s*\([^)]*["\'][wa]["\']', 'python/file-write', 'File write operation', 'low'),
+        ]
+
+        for pattern, rule_id, message, severity in patterns:
+            if re.search(pattern, code, re.IGNORECASE):
+                findings.append({
+                    'rule_id': rule_id,
+                    'message': message,
+                    'severity': severity,
+                })
+
+        return findings
 
 
 class PromptedLLMScorer:
@@ -335,15 +422,11 @@ class ScoringAgent:
     """
     Hybrid Scoring Agent combining rules and prompted LLM.
 
+    Supports both Python and C/C++ code analysis.
+
     Usage:
         agent = ScoringAgent(config)
-        result = agent.score(
-            code="...",
-            gcc_output="...",
-            test_output={...},
-            codeql_findings=[...],
-            klee_output="..."
-        )
+        result = agent.score(code="...", language="python")
     """
 
     def __init__(
@@ -351,7 +434,8 @@ class ScoringAgent:
         config: Optional[RewardConfig] = None,
         security_weights: Optional[SecurityWeights] = None,
         use_llm_for_security: bool = True,
-        llm_model: str = "deepseek-ai/deepseek-coder-1.3b-instruct"
+        llm_model: str = "deepseek-ai/deepseek-coder-1.3b-instruct",
+        default_language: str = "python"
     ):
         """
         Initialize hybrid scoring agent.
@@ -361,16 +445,95 @@ class ScoringAgent:
             security_weights: CVSS/CWE weights
             use_llm_for_security: Whether to use LLM for security interpretation
             llm_model: Model to use for LLM scoring
+            default_language: Default language for code analysis ("python" or "c")
         """
         self.config = config or RewardConfig()
         self.security_weights = security_weights or SecurityWeights()
         self.rules_engine = RulesEngine()
         self.use_llm = use_llm_for_security
+        self.default_language = default_language
 
         if use_llm_for_security:
             self.llm_scorer = PromptedLLMScorer(model_name=llm_model)
         else:
             self.llm_scorer = None
+
+    def _has_ambiguous_findings(
+        self,
+        findings: List[Dict],
+        code: str,
+    ) -> bool:
+        """
+        Detect findings that may need LLM interpretation due to ambiguity.
+
+        Ambiguous findings include:
+        - eval/exec that might be in comments or test code
+        - Password/key strings that could be test data
+        - Dynamic patterns that need context to assess
+
+        Args:
+            findings: List of security findings
+            code: The code being analyzed
+
+        Returns:
+            True if findings are ambiguous and need LLM interpretation
+        """
+        # Patterns that often need context to assess properly
+        ambiguous_patterns = [
+            'eval',           # Could be in comment, test, or legitimate use
+            'exec',           # Could be sandboxed or controlled
+            'password',       # Could be test data or example
+            'key',            # Could be dict key vs crypto key
+            'secret',         # Could be test/example data
+            'credential',     # Could be placeholder
+            'pickle',         # Could be for trusted data
+            'shell',          # Could be controlled input
+            '__import__',     # Could be legitimate dynamic import
+        ]
+
+        # Check if any finding message contains ambiguous patterns
+        for finding in findings:
+            message = finding.get('message', '').lower()
+            rule_id = finding.get('rule_id', '').lower()
+
+            for pattern in ambiguous_patterns:
+                if pattern in message or pattern in rule_id:
+                    # Additional context checks
+                    code_lower = code.lower()
+
+                    # Don't flag as ambiguous if it's clearly malicious
+                    clear_malicious = [
+                        'os.system(input',       # Direct user input to system
+                        'eval(input',            # Direct user input to eval
+                        'subprocess.call(input', # Direct user input to subprocess
+                    ]
+                    if any(m in code_lower.replace(' ', '') for m in clear_malicious):
+                        continue  # Clear threat, not ambiguous
+
+                    # Check for test-like context that makes it ambiguous
+                    test_indicators = [
+                        'test_',
+                        'unittest',
+                        'pytest',
+                        '# example',
+                        '# test',
+                        'mock',
+                        'fake_',
+                        'dummy_',
+                    ]
+                    has_test_context = any(t in code_lower for t in test_indicators)
+
+                    # Check for comment context
+                    has_comment_context = (
+                        f'# {pattern}' in code_lower or
+                        f'"""{pattern}' in code_lower or
+                        f"'''{pattern}" in code_lower
+                    )
+
+                    if has_test_context or has_comment_context:
+                        return True  # Ambiguous - need LLM to interpret
+
+        return False
 
     def score(
         self,
@@ -380,23 +543,30 @@ class ScoringAgent:
         codeql_findings: Optional[List[Dict]] = None,
         klee_output: Optional[str] = None,
         compilation_result: Optional[CompilationResult] = None,
+        language: Optional[str] = None,
     ) -> ScoringResult:
         """
         Score generated code using hybrid approach.
 
         Args:
             code: Generated code
-            gcc_output: Raw GCC compiler output
+            gcc_output: Raw GCC compiler output (C/C++ only)
             test_output: Test execution results dictionary
-            codeql_findings: List of CodeQL findings
-            klee_output: Raw KLEE output
+            codeql_findings: List of CodeQL/security findings
+            klee_output: Raw KLEE output (C/C++ only)
+            language: Code language ("python" or "c"). Defaults to self.default_language
 
         Returns:
             ScoringResult with all metrics
         """
-        # 1. Compilation (rules)
+        language = language or self.default_language
+
+        # 1. Syntax/Compilation check
         if compilation_result is not None:
             compilation = compilation_result
+        elif language == "python":
+            # Use Python AST parsing
+            compilation = self.rules_engine.parse_python_syntax(code)
         elif gcc_output is not None:
             compilation = self.rules_engine.parse_gcc_output(gcc_output)
         else:
@@ -416,37 +586,47 @@ class ScoringAgent:
                 has_semantic_error=False, failure_types={}
             )
 
-        # 3. KLEE bugs (rules)
+        # 3. KLEE bugs (C/C++ only - not applicable to Python)
         klee_bugs = []
-        if klee_output:
+        if klee_output and language != "python":
             klee_bugs = self.rules_engine.parse_klee_output(klee_output)
 
-        # 4. Security (rules + optional LLM)
-        codeql_findings = codeql_findings or []
+        # 4. Security analysis
+        if language == "python":
+            # Use Python-specific security checks
+            security_findings = codeql_findings or self.rules_engine.check_python_security(code)
+        else:
+            security_findings = codeql_findings or []
 
         # Base severity from rules
         base_severity = self.security_weights.compute_normalized_severity(
-            codeql_findings=codeql_findings,
+            codeql_findings=security_findings,
             klee_bugs=klee_bugs,
         )
 
         # Optional LLM interpretation for context-aware adjustment
+        # Only use LLM when findings are ambiguous (to save compute)
         llm_interpretation = None
-        if self.use_llm and self.llm_scorer and codeql_findings:
-            try:
-                llm_severity, llm_interpretation = self.llm_scorer.interpret_security_findings(
-                    code_snippet=code,
-                    findings=codeql_findings,
-                )
-                # Blend rule-based and LLM severity (70% rules, 30% LLM)
-                severity_v = 0.7 * base_severity + 0.3 * llm_severity
-            except Exception:
+        if self.use_llm and self.llm_scorer and security_findings:
+            # Check if findings are ambiguous and need LLM interpretation
+            if self._has_ambiguous_findings(security_findings, code):
+                try:
+                    llm_severity, llm_interpretation = self.llm_scorer.interpret_security_findings(
+                        code_snippet=code,
+                        findings=security_findings,
+                    )
+                    # Blend rule-based and LLM severity (70% rules, 30% LLM)
+                    severity_v = 0.7 * base_severity + 0.3 * llm_severity
+                except Exception:
+                    severity_v = base_severity
+            else:
+                # Not ambiguous - use rule-based severity directly
                 severity_v = base_severity
         else:
             severity_v = base_severity
 
         security = SecurityResult(
-            findings=codeql_findings,
+            findings=security_findings,
             severity_score=severity_v,
             llm_interpretation=llm_interpretation,
         )

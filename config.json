@@ -1,7 +1,0 @@
-{
-	"MODEL_PATH":"deepseek-ai/deepseek-coder-1.3b-instruct",
-	"max_new_tokens": 512,
-	"num_return_sequences" : 1,
-	"HUGGINGFACE_TOKEN" : <token>,
-	"PROMPT" : "Write a calculator in C, give just the code, no explanation."
-}
