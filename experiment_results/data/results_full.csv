@@ -1,0 +1,4 @@
+model,total_samples,compile_rate,semantic_error_rate,security_rate,compiling_samples,security_issues,high_severity,medium_severity
+deepseek,7408,80.08,93.90,3.40,5932,252,0,3
+codellama,7408,50.16,97.63,0.65,3716,48,1,2
+starcoder2,7408,25.35,99.52,0.49,1878,36,0,1

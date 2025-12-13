@@ -266,11 +266,13 @@ checkpoints/
 # Legacy/archived files (old C pipeline)
 legacy/
 
-# Reports (paper drafts, generated during work)
-reports/
-
 # Temporary output
 output.txt
+
+# Paper and data directories (not ready for commit)
+paper/
+data/
+reports/
 
 # KLEE specific
 *.ktest

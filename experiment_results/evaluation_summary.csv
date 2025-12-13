@@ -1,0 +1,5 @@
+Model,N_Samples,Syntax_Valid_%,Test_Pass_%,Security_Clean_%,Mean_Rfunc,Mean_Rsec,Mean_R_Combined,Regex_Findings,Bandit_Findings
+SFT_Baseline,20,45.0,0.0,100.0,0.0,1.0,0.40,3,0
+PPO_Simple,20,15.0,0.0,100.0,0.0,1.0,0.40,0,0
+PPO_Continue,20,60.0,5.0,100.0,0.017,1.0,0.41,11,0
+PPO_Fresh,20,25.0,0.0,100.0,0.0,1.0,0.40,5,0
