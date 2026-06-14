@@ -2,11 +2,11 @@
 
 **Scheduled Partial-Credit RL for Reliable Code Generation with Small Language Models**
 
-LCTES '26 (WIP) — [ACM DL](https://dl.acm.org/doi/10.1145/3814943.3816167) · [DOI: 10.1145/3814943.3816167](https://doi.org/10.1145/3814943.3816167)
+LCTES '26 (WIP) — [DOI: 10.1145/3814943.3816167](https://doi.org/10.1145/3814943.3816167)
 
 This repository contains the source code, training pipeline, and evaluation
 scripts that accompany the LCTES '26 WIP paper. The camera-ready PDF is at
-[`paper/pldiws26lctesmain-p11-p-b372538494-176281_176283M-final.pdf`](paper/pldiws26lctesmain-p11-p-b372538494-176281_176283M-final.pdf)
+[`paper/lctes26-camera-ready.pdf`](paper/lctes26-camera-ready.pdf)
 and is the source of truth for every claim in this README. The system name
 `SecureCodeRL` matches the prior preprint (arXiv:2501.01184); the LCTES paper
 reframes the headline metric from security to reliability given the null
